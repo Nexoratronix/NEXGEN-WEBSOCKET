@@ -1,0 +1,13 @@
+{
+    "name": "websocket-server",
+    "version": "1.0.0",
+    "main": "websocket-server.js",
+    "scripts": {
+      "start": "node websocket-server.js"
+    },
+    "dependencies": {
+      "socket.io": "^4.7.5",
+      "redis": "^4.6.13",
+      "@socket.io/redis-adapter": "^8.3.0"
+    }
+  }
