@@ -6,8 +6,17 @@ const { createAdapter } = require("@socket.io/redis-adapter");
 const server = createServer();
 const io = new Server(server, {
   cors: {
-    origin: "https://nexgen-staging.vercel.app", // Your Vercel app URL
+    origin: (origin, callback) => {
+      const allowedOrigins = ["https://nexgen-staging.vercel.app"];
+      console.log("Request Origin:", origin); // Log incoming origin
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS not allowed"));
+      }
+    },
     methods: ["GET", "POST"],
+    credentials: true, // Explicitly allow credentials
   },
 });
 
@@ -21,7 +30,7 @@ Promise.all([redisPublisher.connect(), redisSubscriber.connect()]).then(() => {
   io.adapter(createAdapter(redisPublisher, redisSubscriber));
 
   io.on("connection", (socket) => {
-    console.log("A user connected:", socket.id);
+    console.log("A user connected:", socket.id, "Origin:", socket.handshake.headers.origin);
 
     socket.on("join", (userId) => {
       socket.join(userId);
@@ -29,6 +38,7 @@ Promise.all([redisPublisher.connect(), redisSubscriber.connect()]).then(() => {
 
       redisSubscriber.subscribe(`notifications:${userId}`, (message) => {
         const notification = JSON.parse(message);
+        console.log("Publishing notification to", userId, ":", notification);
         socket.emit("newNotification", notification);
       });
     });
@@ -42,4 +52,4 @@ Promise.all([redisPublisher.connect(), redisSubscriber.connect()]).then(() => {
   server.listen(port, () => {
     console.log(`WebSocket server running on port ${port}`);
   });
-});
+}).catch(err => console.error("Redis connection failed:", err));
