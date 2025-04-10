@@ -8,15 +8,15 @@ const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
       const allowedOrigins = ["https://nexgen-staging.vercel.app"];
-      console.log("Request Origin:", origin); // Log incoming origin
+      console.log("Request Origin:", origin);
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error("CORS not allowed"));
+        callback(new Error("CORS not allowed for origin: " + origin));
       }
     },
     methods: ["GET", "POST"],
-    credentials: true, // Explicitly allow credentials
+    credentials: true,
   },
 });
 
@@ -26,30 +26,57 @@ const redisSubscriber = createClient({ url: process.env.REDIS_URL });
 redisPublisher.on("error", (err) => console.error("Redis publisher error:", err));
 redisSubscriber.on("error", (err) => console.error("Redis subscriber error:", err));
 
-Promise.all([redisPublisher.connect(), redisSubscriber.connect()]).then(() => {
-  io.adapter(createAdapter(redisPublisher, redisSubscriber));
+redisPublisher.on("end", () => console.log("Redis publisher connection ended"));
+redisSubscriber.on("end", () => console.log("Redis subscriber connection ended"));
 
-  io.on("connection", (socket) => {
-    console.log("A user connected:", socket.id, "Origin:", socket.handshake.headers.origin);
+Promise.all([redisPublisher.connect(), redisSubscriber.connect()])
+  .then(() => {
+    io.adapter(createAdapter(redisPublisher, redisSubscriber));
 
-    socket.on("join", (userId) => {
-      socket.join(userId);
-      console.log(`User ${userId} joined room`);
+    io.on("connection", (socket) => {
+      console.log("A user connected:", socket.id, "Origin:", socket.handshake.headers.origin);
 
-      redisSubscriber.subscribe(`notifications:${userId}`, (message) => {
-        const notification = JSON.parse(message);
-        console.log("Publishing notification to", userId, ":", notification);
-        socket.emit("newNotification", notification);
+      socket.on("join", (userId) => {
+        socket.join(userId);
+        console.log(`User ${userId} joined room`);
+
+        redisSubscriber.subscribe(`notifications:${userId}`, (message) => {
+          try {
+            const notification = JSON.parse(message);
+            console.log("Publishing notification to", userId, ":", notification);
+            socket.emit("newNotification", notification);
+          } catch (err) {
+            console.error("Error parsing notification:", err);
+          }
+        }).catch(err => console.error("Subscription error for", userId, ":", err));
+      });
+
+      socket.on("disconnect", (reason) => {
+        console.log("User disconnected:", socket.id, "Reason:", reason);
       });
     });
 
-    socket.on("disconnect", () => {
-      console.log("User disconnected:", socket.id);
+    const port = process.env.PORT;
+    server.listen(port, () => {
+      console.log(`WebSocket server running on port ${port}`);
     });
+
+    setInterval(() => {
+      console.log("Server is alive at", new Date());
+    }, 30000); // Keep-alive log
+  })
+  .catch((err) => {
+    console.error("Failed to start server due to Redis error:", err);
+    process.exit(1);
   });
 
-  const port = process.env.PORT || 3001;
-  server.listen(port, () => {
-    console.log(`WebSocket server running on port ${port}`);
-  });
-}).catch(err => console.error("Redis connection failed:", err));
+// Reconnect Redis on disconnection
+redisSubscriber.on("end", () => {
+  console.log("Attempting to reconnect Redis subscriber...");
+  redisSubscriber.connect().catch(err => console.error("Reconnect failed:", err));
+});
+
+redisPublisher.on("end", () => {
+  console.log("Attempting to reconnect Redis publisher...");
+  redisPublisher.connect().catch(err => console.error("Reconnect failed:", err));
+});
