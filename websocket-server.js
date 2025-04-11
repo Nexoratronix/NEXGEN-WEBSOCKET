@@ -56,7 +56,7 @@ Promise.all([redisPublisher.connect(), redisSubscriber.connect()])
 
       socket.on("disconnect", (reason) => {
         console.log("User disconnected:", socket.id, "Reason:", reason);
-        alert("User disconnected:", socket.id, "Reason:", reason);
+       
       });
     });
 
