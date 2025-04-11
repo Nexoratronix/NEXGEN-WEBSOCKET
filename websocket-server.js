@@ -17,7 +17,10 @@ const io = new Server(server, {
     },
     methods: ["GET", "POST"],
     credentials: true,
+    
   },
+  pingInterval: 10000, // Send ping every 10 seconds to keep connection alive
+  pingTimeout: 5000,   // Client timeout if no pong in 5 seconds
 });
 
 const redisPublisher = createClient({ url: "rediss://default:2ec2165b6cc84674b2b75f8c8b551716@gusc1-keen-gecko-31253.upstash.io:31253" });
@@ -53,6 +56,7 @@ Promise.all([redisPublisher.connect(), redisSubscriber.connect()])
 
       socket.on("disconnect", (reason) => {
         console.log("User disconnected:", socket.id, "Reason:", reason);
+        alert("User disconnected:", socket.id, "Reason:", reason);
       });
     });
 
